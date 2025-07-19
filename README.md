@@ -17,6 +17,13 @@ This is a simple Streamlit web application that forecasts future internet penetr
 
 ## 🛠 Requirements
 
+streamlit>=1.25
+pandas>=1.4
+matplotlib
+scikit-learn
+openpyxl
+xlsxwriter
+
 Install required packages using pip:
 
 ```bash
