@@ -44,8 +44,14 @@ if uploaded_file is not None:
             poly_model = LinearRegression().fit(X_poly, y)
             poly_r2 = r2_score(y, poly_model.predict(X_poly))
 
-            # ✅ Year selection slider
-            pred_year = st.slider("📅 Select a year to predict", int(X.min()), 2030, 2026)
+            # ✅ Determine prediction range (up to 5 years beyond data)
+            min_year = int(X.min())
+            max_year = int(X.max())
+            future_limit = max_year + 5
+
+            # ✅ Year selection slider (dynamic)
+            pred_year = st.slider("📅 Select a year to predict", min_year, future_limit, max_year + 1)
+
             linear_pred = linear_model.predict([[pred_year]])[0]
             poly_pred = poly_model.predict(poly.transform([[pred_year]]))[0]
 
