@@ -17,12 +17,16 @@ file = st.file_uploader("Upload Excel (.xlsx) file", type=["xlsx"])
 if file:
     try:
         df = pd.read_excel(file)
+        df.columns = df.columns.str.strip().str.upper()
 
-        # ✅ Check required columns
+        st.write("🧾 Columns detected:", df.columns.tolist())  # Debug output
+
         if 'YEAR' not in df.columns or 'VALUE' not in df.columns:
-            st.error("❌ Excel file must contain 'YEAR' and 'VALUE' columns.")
+            st.error("❌ Excel must contain columns named 'YEAR' and 'VALUE'.")
         else:
-            st.success("✅ File uploaded and read successfully!")
+            df = df[['YEAR', 'VALUE']].rename(columns={'YEAR': 'Year', 'VALUE': 'Penetration'})
+            st.success("✅ Data loaded successfully!")
+            st.dataframe(df.head())
 
             # ✅ Rename and clean
             df = df[['YEAR', 'VALUE']].rename(columns={'YEAR': 'Year', 'VALUE': 'Penetration'})
@@ -80,4 +84,6 @@ if file:
                                mime="application/vnd.ms-excel")
 
     except Exception as e:
-        st.error(f"⚠️ Failed to process the Excel file: {e}")
+        st.error(f"⚠️ Error reading Excel file: {e}")
+else:
+    st.info("📂 Please upload your Excel file (.xlsx) to continue.")
