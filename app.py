@@ -30,7 +30,7 @@ if uploaded_file is not None:
         st.error(f"❌ Error reading Excel file: {e}")
 else:
     st.warning("⚠️ Please upload an Excel (.xlsx) file to continue.")
-        st.dataframe(df.head())
+    st.dataframe(df.head())
 
         # ✅ Clean data
         df = df.dropna()
