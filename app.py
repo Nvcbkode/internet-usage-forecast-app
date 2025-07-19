@@ -13,22 +13,23 @@ st.set_page_config(page_title="Internet Forecast App", layout="centered")
 st.title("📡 Internet Usage Forecasting App")
 st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA dataset.")
 
-# ✅ Load Excel file with proper error handling
-file_path = "C:/Users/PC-2/Documents/School/Project 3/ITNETUSERP2NGA.xlsx"
+# Upload Excel file using Streamlit
+uploaded_file = st.file_uploader("📤 Upload Internet Usage Excel File", type=["xlsx"])
 
-if not os.path.exists(file_path):
-    st.error(f"❌ File not found at:\n`{file_path}`\nPlease verify the path.")
-else:
+if uploaded_file is not None:
     try:
-        df = pd.read_excel(file_path)
-        df.columns = df.columns.str.strip().str.upper()
+        df = pd.read_excel(uploaded_file)
+        df = df[['YEAR', 'VALUE']].rename(columns={'YEAR': 'Year', 'VALUE': 'Penetration'})
 
-        if 'YEAR' in df.columns and 'VALUE' in df.columns:
-            df = df[['YEAR', 'VALUE']].rename(columns={'YEAR': 'Year', 'VALUE': 'Penetration'})
-        else:
-            st.error("Excel file must contain 'YEAR' and 'VALUE' columns.")
+        st.success("✅ File uploaded and read successfully!")
+        st.dataframe(df.head())
 
-        st.success("✅ ITNETUSERP2NGA dataset loaded successfully!")
+        # Continue with cleaning, modeling, plotting, etc.
+
+    except Exception as e:
+        st.error(f"❌ Error reading Excel file: {e}")
+else:
+    st.warning("⚠️ Please upload an Excel (.xlsx) file to continue.")
         st.dataframe(df.head())
 
         # ✅ Clean data
