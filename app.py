@@ -37,6 +37,7 @@ if uploaded_file is not None:
             # ✅ Clean data
             df = df.dropna()
             df = df[df['Penetration'] > 0]
+            df['Year'] = df['Year'].astype(int)
             X = df[['Year']]
             y = df['Penetration']
 
@@ -47,15 +48,15 @@ if uploaded_file is not None:
             poly_model = LinearRegression().fit(X_poly, y)
 
             # ✅ Forecast for next 5 years
-            future_years = list(range(int(df['Year'].max()) + 1, int(df['Year'].max()) + 6))
+            future_years = list(range(df['Year'].max() + 1, df['Year'].max() + 6))
             future_df = pd.DataFrame(future_years, columns=['Year'])
             linear_preds = linear_model.predict(future_df)
             poly_preds = poly_model.predict(poly.transform(future_df))
 
             forecast_df = pd.DataFrame({
                 "Year": future_years,
-                "Linear Forecast": [round(x, 2) for x in linear_preds],
-                "Polynomial Forecast": [round(x, 2) for x in poly_preds]
+                "Linear Forecast": linear_preds.round(2),
+                "Polynomial Forecast": poly_preds.round(2)
             })
 
             # ✅ Prophet Model
@@ -66,42 +67,55 @@ if uploaded_file is not None:
             future = model.make_future_dataframe(periods=5, freq='Y')
             forecast = model.predict(future)
             prophet_forecast = forecast[['ds', 'yhat']].tail(5)
-            prophet_forecast['Year'] = prophet_forecast['ds'].dt.year
+            prophet_forecast['Year'] = prophet_forecast['ds'].dt.year.astype(int)
             prophet_forecast['Prophet Forecast'] = prophet_forecast['yhat'].round(2)
 
             # ✅ Merge for column chart
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
 
-            # ✅ Display Forecast Table
-            st.subheader("📈 Multi-Year Forecast (Next 5 Years)")
-            st.dataframe(export_df)
+            # ✅ Add past years comparison
+            df['Linear Forecast'] = linear_model.predict(df[['Year']]).round(2)
+            df['Polynomial Forecast'] = poly_model.predict(poly.transform(df[['Year']])).round(2)
+            prophet_hist = forecast[['ds', 'yhat']].head(len(df))
+            prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
+            df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
+            df = df.rename(columns={'yhat': 'Prophet Forecast'})
+            df['Prophet Forecast'] = df['Prophet Forecast'].round(2)
+
+            combined_df = pd.concat([df[['Year', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']], export_df])
+            combined_df = combined_df.sort_values('Year')
+
+            # ✅ Display Full Forecast Table
+            st.subheader("📊 Full Forecast (Including Past & Future Years)")
+            st.dataframe(combined_df)
 
             # ✅ Line Chart
-            line_fig = px.line(export_df, x="Year", y=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
-                               markers=True, title="📈 Forecast Line Chart")
+            line_fig = px.line(combined_df, x="Year", y=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
+                               markers=True, title="📈 Forecast Line Chart (All Years)")
             for trace in line_fig.data:
-                trace.update(text=trace.y, textposition="top center")
+                trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
             st.plotly_chart(line_fig, use_container_width=True)
 
             # ✅ Column Chart
-            col_fig = px.bar(export_df.melt(id_vars='Year',
-                                            value_vars=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
-                                            var_name="Model", value_name="Forecast"),
+            melted_df = combined_df.melt(id_vars='Year',
+                                         value_vars=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
+                                         var_name="Model", value_name="Forecast")
+            col_fig = px.bar(melted_df,
                              x="Year", y="Forecast", color="Model", barmode="group",
-                             text_auto='.2s', title="📊 Forecast Comparison Column Chart")
+                             text=melted_df["Forecast"].round(2), title="📊 Forecast Comparison Column Chart (All Years)")
             col_fig.update_traces(textposition='outside')
             st.plotly_chart(col_fig, use_container_width=True)
 
             # ✅ Download report
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                export_df.to_excel(writer, index=False, sheet_name='Forecast')
+                combined_df.to_excel(writer, index=False, sheet_name='Forecast')
             st.download_button("📥 Download Forecast Report (Excel)",
                                data=buffer,
-                               file_name="forecast_report_5yrs.xlsx",
+                               file_name="forecast_report_full.xlsx",
                                mime="application/vnd.ms-excel")
 
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
 else:
-    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")
+    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")   
