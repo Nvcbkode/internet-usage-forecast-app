@@ -98,7 +98,7 @@ if uploaded_file is not None:
                         metrics["Model"].append(model_name)
                         metrics["R2 Score"].append(round(r2_score(df['Penetration'], df[model_name]), 3))
                         metrics["MAE"].append(round(mean_absolute_error(df['Penetration'], df[model_name]), 3))
-                        metrics["RMSE"].append(round(mean_squared_error(df['Penetration'], df[model_name], squared=False), 3))
+                        metrics["RMSE"].append(round(np.sqrt(mean_squared_error(df['Penetration'], df[model_name])), 3))
                 st.dataframe(pd.DataFrame(metrics))
 
             st.subheader("\U0001F4C8 Forecast Line Chart")
