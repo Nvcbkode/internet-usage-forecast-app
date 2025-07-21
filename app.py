@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import r2_score
@@ -72,13 +72,25 @@ if uploaded_file is not None:
             st.write("🔮 Prophet Forecast:")
             st.dataframe(prophet_forecast.rename(columns={"ds": "Year", "yhat": "Prophet Forecast"}))
 
-            # ✅ Plot with Plotly
-            fig_plotly = px.line(df, x='Year', y='Penetration', title='Actual Internet Usage')
-            for model_name, preds in zip(['Linear', 'Polynomial'], [linear_preds, poly_preds]):
-                fig_plotly.add_scatter(x=future_years, y=preds, mode='lines+markers', name=model_name)
-            fig_plotly.add_scatter(x=prophet_forecast['ds'].dt.year, y=prophet_forecast['yhat'],
-                                   mode='lines+markers', name='Prophet')
-            st.plotly_chart(fig_plotly, use_container_width=True)
+            # ✅ Plot Column + Line chart
+            fig = go.Figure()
+            # Actual data
+            fig.add_trace(go.Scatter(x=df['Year'], y=df['Penetration'], mode='lines+markers', name='Actual'))
+            # Linear forecast
+            fig.add_trace(go.Bar(x=future_years, y=linear_preds, name='Linear Forecast'))
+            fig.add_trace(go.Scatter(x=future_years, y=linear_preds, mode='lines+markers', name='Linear Trend'))
+            # Polynomial forecast
+            fig.add_trace(go.Bar(x=future_years, y=poly_preds, name='Polynomial Forecast'))
+            fig.add_trace(go.Scatter(x=future_years, y=poly_preds, mode='lines+markers', name='Polynomial Trend'))
+            # Prophet forecast
+            fig.add_trace(go.Bar(x=prophet_forecast['ds'].dt.year, y=prophet_forecast['yhat'], name='Prophet Forecast'))
+            fig.add_trace(go.Scatter(x=prophet_forecast['ds'].dt.year, y=prophet_forecast['yhat'], mode='lines+markers', name='Prophet Trend'))
+
+            fig.update_layout(title='📊 Internet Usage Forecast (Actual + Models)',
+                              xaxis_title='Year',
+                              yaxis_title='Penetration (%)',
+                              barmode='group')
+            st.plotly_chart(fig, use_container_width=True)
 
             # ✅ Download report
             export_df = pd.DataFrame({
@@ -95,6 +107,11 @@ if uploaded_file is not None:
                                data=buffer,
                                file_name="forecast_report_5yrs.xlsx",
                                mime="application/vnd.ms-excel")
+
+    except Exception as e:
+        st.error(f"❌ Error reading file: {e}")
+else:
+    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")
 
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
