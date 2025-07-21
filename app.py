@@ -48,16 +48,17 @@ if uploaded_file is not None:
 
             # ✅ Forecast for next 5 years
             future_years = list(range(int(df['Year'].max()) + 1, int(df['Year'].max()) + 6))
-            linear_preds = linear_model.predict(pd.DataFrame(future_years))
-            poly_preds = poly_model.predict(poly.transform(pd.DataFrame(future_years)))
+            future_df = pd.DataFrame(future_years, columns=['Year'])
+            linear_preds = linear_model.predict(future_df)
+            poly_preds = poly_model.predict(poly.transform(future_df))
 
             forecast_df = pd.DataFrame({
                 "Year": future_years,
-                "Linear Forecast": linear_preds,
-                "Polynomial Forecast": poly_preds
+                "Linear Forecast": [round(x, 2) for x in linear_preds],
+                "Polynomial Forecast": [round(x, 2) for x in poly_preds]
             })
 
-            # ✅ Prophet Model (Time Series Forecasting)
+            # ✅ Prophet Model
             prophet_df = df.rename(columns={"Year": "ds", "Penetration": "y"})
             prophet_df["ds"] = pd.to_datetime(prophet_df["ds"], format="%Y")
             model = Prophet()
@@ -65,49 +66,33 @@ if uploaded_file is not None:
             future = model.make_future_dataframe(periods=5, freq='Y')
             forecast = model.predict(future)
             prophet_forecast = forecast[['ds', 'yhat']].tail(5)
+            prophet_forecast['Year'] = prophet_forecast['ds'].dt.year
+            prophet_forecast['Prophet Forecast'] = prophet_forecast['yhat'].round(2)
 
-            # ✅ Display all forecasts
+            # ✅ Merge for column chart
+            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
+
+            # ✅ Display Forecast Table
             st.subheader("📈 Multi-Year Forecast (Next 5 Years)")
-            st.write(forecast_df)
-            st.write("🔮 Prophet Forecast:")
-            st.dataframe(prophet_forecast.rename(columns={"ds": "Year", "yhat": "Prophet Forecast"}))
+            st.dataframe(export_df)
 
-            # ✅ Plot with Plotly (Line Chart)
-            fig_plotly = px.line(df, x='Year', y='Penetration', title='Actual Internet Usage')
-            for model_name, preds in zip(['Linear', 'Polynomial'], [linear_preds, poly_preds]):
-                fig_plotly.add_scatter(x=future_years, y=preds, mode='lines+markers+text', name=model_name,
-                                       text=[f"{p:.1f}" for p in preds], textposition="top center")
-            fig_plotly.add_scatter(x=prophet_forecast['ds'].dt.year, y=prophet_forecast['yhat'],
-                                   mode='lines+markers+text', name='Prophet',
-                                   text=[f"{p:.1f}" for p in prophet_forecast['yhat']], textposition="top center")
-            st.plotly_chart(fig_plotly, use_container_width=True)
+            # ✅ Line Chart
+            line_fig = px.line(export_df, x="Year", y=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
+                               markers=True, title="📈 Forecast Line Chart")
+            for trace in line_fig.data:
+                trace.update(text=trace.y, textposition="top center")
+            st.plotly_chart(line_fig, use_container_width=True)
 
-            # ✅ Plot Column Chart with Data Labels
-            bar_fig = px.bar(
-                forecast_df,
-                x='Year',
-                y=['Linear Forecast', 'Polynomial Forecast'],
-                barmode='group',
-                title='Forecast Comparison (Bar Chart)',
-                text_auto=True
-            )
-            bar_fig.add_bar(
-                x=prophet_forecast['ds'].dt.year,
-                y=prophet_forecast['yhat'],
-                name='Prophet Forecast',
-                text=[f"{p:.1f}" for p in prophet_forecast['yhat']],
-                textposition="outside"
-            )
-            st.plotly_chart(bar_fig, use_container_width=True)
+            # ✅ Column Chart
+            col_fig = px.bar(export_df.melt(id_vars='Year',
+                                            value_vars=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
+                                            var_name="Model", value_name="Forecast"),
+                             x="Year", y="Forecast", color="Model", barmode="group",
+                             text_auto='.2s', title="📊 Forecast Comparison Column Chart")
+            col_fig.update_traces(textposition='outside')
+            st.plotly_chart(col_fig, use_container_width=True)
 
             # ✅ Download report
-            export_df = pd.DataFrame({
-                "Year": future_years,
-                "Linear Forecast": linear_preds,
-                "Polynomial Forecast": poly_preds,
-                "Prophet Forecast": list(prophet_forecast['yhat'])
-            })
-
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 export_df.to_excel(writer, index=False, sheet_name='Forecast')
