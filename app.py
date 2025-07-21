@@ -9,6 +9,7 @@ from sklearn.metrics import r2_score
 from prophet import Prophet
 import io
 import datetime
+import numpy as np
 
 st.set_page_config(page_title="Internet Forecast App", layout="wide")
 
@@ -56,7 +57,7 @@ if uploaded_file is not None:
             forecast = model.predict(future)
             prophet_forecast = forecast[['ds', 'yhat']].tail(5)
             prophet_forecast['Year'] = prophet_forecast['ds'].dt.year.astype(int)
-            prophet_forecast['Prophet Forecast'] = prophet_forecast['yhat'].clip(lower=0).round(2)
+            prophet_forecast['Prophet Forecast'] = np.clip(prophet_forecast['yhat'], 0, None).round(2)
 
             # ✅ Ensure Year is int before prediction
             if pd.api.types.is_datetime64_any_dtype(df['Year']):
@@ -66,8 +67,8 @@ if uploaded_file is not None:
             # ✅ Forecast for next 5 years
             future_years = list(range(df['Year'].max() + 1, df['Year'].max() + 6))
             future_df = pd.DataFrame(future_years, columns=['Year'])
-            linear_preds = linear_model.predict(future_df).clip(lower=0)
-            poly_preds = poly_model.predict(poly.transform(future_df)).clip(lower=0)
+            linear_preds = np.clip(linear_model.predict(future_df), 0, None)
+            poly_preds = np.clip(poly_model.predict(poly.transform(future_df)), 0, None)
 
             forecast_df = pd.DataFrame({
                 "Year": future_years,
@@ -79,13 +80,13 @@ if uploaded_file is not None:
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
 
             # ✅ Add past years comparison
-            df['Linear Forecast'] = linear_model.predict(df[['Year']]).clip(lower=0).round(2)
-            df['Polynomial Forecast'] = poly_model.predict(poly.transform(df[['Year']])).clip(lower=0).round(2)
+            df['Linear Forecast'] = np.clip(linear_model.predict(df[['Year']]), 0, None).round(2)
+            df['Polynomial Forecast'] = np.clip(poly_model.predict(poly.transform(df[['Year']])), 0, None).round(2)
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
             df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
             df = df.rename(columns={'yhat': 'Prophet Forecast'})
-            df['Prophet Forecast'] = df['Prophet Forecast'].clip(lower=0).round(2)
+            df['Prophet Forecast'] = np.clip(df['Prophet Forecast'], 0, None).round(2)
 
             combined_df = pd.concat([df[['Year', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']], export_df])
             combined_df = combined_df.sort_values('Year')
@@ -105,6 +106,7 @@ if uploaded_file is not None:
             melted_df = combined_df.melt(id_vars='Year',
                                          value_vars=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"],
                                          var_name="Model", value_name="Forecast")
+            melted_df = melted_df.sort_values(by=['Year', 'Model'])
             col_fig = px.bar(melted_df,
                              x="Year", y="Forecast", color="Model", barmode="group",
                              text=melted_df["Forecast"].round(2), title="📊 Forecast Comparison Column Chart (All Years)")
