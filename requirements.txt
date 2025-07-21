@@ -1,6 +1,8 @@
-streamlit>=1.25
-pandas>=1.4
+streamlit
+pandas
 matplotlib
 scikit-learn
+plotly
+prophet
 openpyxl
 xlsxwriter
