@@ -2,86 +2,132 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from prophet import Prophet
 import io
+import datetime
+import numpy as np
 
-st.set_page_config(page_title="Internet Forecast App", layout="centered")
+st.set_page_config(page_title="Internet Forecast App", layout="wide")
 
-st.title("📡 Internet Usage Forecasting App")
+st.title("\U0001F4E1 Internet Usage Forecasting App")
 st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA dataset.")
 
 # ✅ Upload Excel file
-uploaded_file = st.file_uploader("📤 Upload Excel file", type=["xlsx"])
+uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel file", type=["xlsx", "csv"])
+
+# ✅ Optional filters
+show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=True)
+select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
+year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
 
 if uploaded_file is not None:
     try:
-        df = pd.read_excel(uploaded_file)
-
-        # ✅ Check for required columns
-        if 'YEAR' not in df.columns or 'VALUE' not in df.columns:
-            st.error("Excel file must contain 'YEAR' and 'VALUE' columns.")
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
         else:
-            # ✅ Rename and preview
+            df = pd.read_excel(uploaded_file)
+
+        if 'YEAR' not in df.columns or 'VALUE' not in df.columns:
+            st.error("File must contain 'YEAR' and 'VALUE' columns.")
+        else:
             df = df[['YEAR', 'VALUE']].rename(columns={'YEAR': 'Year', 'VALUE': 'Penetration'})
             st.success("✅ File uploaded and read successfully!")
             st.dataframe(df.head())
 
-            # ✅ Clean data
             df = df.dropna()
-            df = df[df['Penetration'] > 0]
-
+            df = df[df['Penetration'] >= 0]
+            df['Year'] = df['Year'].astype(int)
             X = df[['Year']]
             y = df['Penetration']
 
-            # ✅ Models
             linear_model = LinearRegression().fit(X, y)
-            linear_r2 = linear_model.score(X, y)
-
             poly = PolynomialFeatures(degree=2)
             X_poly = poly.fit_transform(X)
             poly_model = LinearRegression().fit(X_poly, y)
-            poly_r2 = r2_score(y, poly_model.predict(X_poly))
 
-            # ✅ Year selection slider
-            pred_year = st.slider("📅 Select a year to predict", int(X.min()), 2030, 2026)
-            linear_pred = linear_model.predict([[pred_year]])[0]
-            poly_pred = poly_model.predict(poly.transform([[pred_year]]))[0]
+            prophet_df = df.rename(columns={"Year": "ds", "Penetration": "y"})
+            prophet_df["ds"] = pd.to_datetime(prophet_df["ds"], format="%Y")
+            model = Prophet()
+            model.fit(prophet_df)
+            future = model.make_future_dataframe(periods=2030 - df['Year'].max(), freq='Y')
+            forecast = model.predict(future)
+            prophet_forecast = forecast[['ds', 'yhat']].tail(2030 - df['Year'].max())
+            prophet_forecast['Year'] = prophet_forecast['ds'].dt.year.astype(int)
+            prophet_forecast['Prophet Forecast'] = np.clip(prophet_forecast['yhat'], 0, None).round(2)
 
-            # ✅ Display predictions
-            st.subheader(f"🔮 Forecast for {pred_year}")
-            st.write(f"📈 Linear Model Prediction: **{int(linear_pred):,}** users")
-            st.write(f"🧮 Polynomial Model Prediction: **{int(poly_pred):,}** users")
-            st.caption(f"Linear R²: {linear_r2:.3f}, Polynomial R²: {poly_r2:.3f}")
+            df['Year'] = df['Year'].astype(int)
+            future_years = list(range(df['Year'].max() + 1, 2031))
+            future_df = pd.DataFrame(future_years, columns=['Year'])
+            linear_preds = np.clip(linear_model.predict(future_df), 0, None)
+            poly_preds = np.clip(poly_model.predict(poly.transform(future_df)), 0, None)
 
-            # ✅ Plot results
-            fig, ax = plt.subplots()
-            ax.scatter(X, y, color='black', label='Actual Data')
-            ax.plot(X, linear_model.predict(X), color='blue', label='Linear Model')
-            ax.plot(X, poly_model.predict(X_poly), color='green', linestyle='--', label='Polynomial Model')
-            ax.set_xlabel("Year")
-            ax.set_ylabel("Penetration (%)")
-            ax.set_title("Internet Usage Forecast")
-            ax.legend()
-            st.pyplot(fig)
-
-            # ✅ Download report
-            report_df = pd.DataFrame({
-                "Model": ["Linear", "Polynomial"],
-                "Year": [pred_year, pred_year],
-                "Predicted Users": [int(linear_pred), int(poly_pred)]
+            forecast_df = pd.DataFrame({
+                "Year": future_years,
+                "Linear Forecast": linear_preds.round(2),
+                "Polynomial Forecast": poly_preds.round(2)
             })
+
+            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
+
+            df['Linear Forecast'] = np.clip(linear_model.predict(df[['Year']]), 0, None).round(2)
+            df['Polynomial Forecast'] = np.clip(poly_model.predict(poly.transform(df[['Year']])), 0, None).round(2)
+            prophet_hist = forecast[['ds', 'yhat']].head(len(df))
+            prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
+            df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
+            df = df.rename(columns={'yhat': 'Prophet Forecast'})
+            df['Prophet Forecast'] = np.clip(df['Prophet Forecast'], 0, None).round(2)
+
+            combined_df = pd.concat([df[['Year', 'Penetration', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']], export_df])
+            combined_df = combined_df.sort_values('Year')
+            combined_df = combined_df[(combined_df['Year'] >= year_range[0]) & (combined_df['Year'] <= year_range[1])]
+
+            st.subheader("\U0001F4C8 Full Forecast (Filtered by Selected Years)")
+            st.dataframe(combined_df)
+
+            if show_accuracy:
+                st.subheader("\U0001F4CA Predictive Accuracy Metrics (on historical data)")
+                metrics = {
+                    "Model": [], "R2 Score": [], "MAE": [], "RMSE": []
+                }
+                for model_name in select_models:
+                    if model_name in df.columns:
+                        metrics["Model"].append(model_name)
+                        metrics["R2 Score"].append(round(r2_score(df['Penetration'], df[model_name]), 3))
+                        metrics["MAE"].append(round(mean_absolute_error(df['Penetration'], df[model_name]), 3))
+                        metrics["RMSE"].append(round(np.sqrt(mean_squared_error(df['Penetration'], df[model_name])), 3))
+                st.dataframe(pd.DataFrame(metrics))
+
+            st.subheader("\U0001F4C8 Forecast Line Chart")
+            line_fig = px.line(combined_df, x="Year", y=select_models,
+                               markers=True, title="Forecast Line Chart (Filtered Models)")
+            for trace in line_fig.data:
+                trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
+            st.plotly_chart(line_fig, use_container_width=True)
+
+            st.subheader("\U0001F4CA Forecast Comparison Column Chart")
+            melted_df = combined_df.melt(id_vars='Year',
+                                         value_vars=select_models,
+                                         var_name="Model", value_name="Forecast")
+            melted_df = melted_df.sort_values(by=['Year', 'Model'])
+            col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
+                             text=melted_df["Forecast"].round(2),
+                             title="Forecast Comparison Column Chart (Filtered Models)")
+            col_fig.update_traces(textposition='outside')
+            st.plotly_chart(col_fig, use_container_width=True)
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                report_df.to_excel(writer, index=False, sheet_name='Forecast')
-            st.download_button("📥 Download Forecast Report (Excel)",
+                combined_df.to_excel(writer, index=False, sheet_name='Forecast')
+            st.download_button("\U0001F4C5 Download Forecast Report (Excel)",
                                data=buffer,
-                               file_name="forecast_report.xlsx",
+                               file_name="forecast_report_full.xlsx",
                                mime="application/vnd.ms-excel")
 
     except Exception as e:
-        st.error(f"❌ Error reading Excel file: {e}")
+        st.error(f"❌ Error reading file: {e}")
 else:
-    st.info("👆 Upload an Excel (.xlsx) file with 'YEAR' and 'VALUE' columns to continue.")
+    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")
