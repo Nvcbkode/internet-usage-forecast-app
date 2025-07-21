@@ -24,6 +24,10 @@ show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=Tr
 select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
 year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
 
+# Interactive chart filters
+chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
+show_data_labels = st.sidebar.checkbox("Show Data Labels on Charts", value=True)
+
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -101,23 +105,27 @@ if uploaded_file is not None:
                         metrics["RMSE"].append(round(np.sqrt(mean_squared_error(df['Penetration'], df[model_name])), 3))
                 st.dataframe(pd.DataFrame(metrics))
 
-            st.subheader("\U0001F4C8 Forecast Line Chart")
-            line_fig = px.line(combined_df, x="Year", y=select_models,
-                               markers=True, title="Forecast Line Chart (Filtered Models)")
-            for trace in line_fig.data:
-                trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
-            st.plotly_chart(line_fig, use_container_width=True)
+            if chart_type in ["Line Chart", "Both"]:
+                st.subheader("\U0001F4C8 Forecast Line Chart")
+                line_fig = px.line(combined_df, x="Year", y=select_models,
+                                   markers=True, title="Forecast Line Chart (Filtered Models)")
+                if show_data_labels:
+                    for trace in line_fig.data:
+                        trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
+                st.plotly_chart(line_fig, use_container_width=True)
 
-            st.subheader("\U0001F4CA Forecast Comparison Column Chart")
-            melted_df = combined_df.melt(id_vars='Year',
-                                         value_vars=select_models,
-                                         var_name="Model", value_name="Forecast")
-            melted_df = melted_df.sort_values(by=['Year', 'Model'])
-            col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
-                             text=melted_df["Forecast"].round(2),
-                             title="Forecast Comparison Column Chart (Filtered Models)")
-            col_fig.update_traces(textposition='outside')
-            st.plotly_chart(col_fig, use_container_width=True)
+            if chart_type in ["Column Chart", "Both"]:
+                st.subheader("\U0001F4CA Forecast Comparison Column Chart")
+                melted_df = combined_df.melt(id_vars='Year',
+                                             value_vars=select_models,
+                                             var_name="Model", value_name="Forecast")
+                melted_df = melted_df.sort_values(by=['Year', 'Model'])
+                col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
+                                 text=melted_df["Forecast"].round(2),
+                                 title="Forecast Comparison Column Chart (Filtered Models)")
+                if show_data_labels:
+                    col_fig.update_traces(textposition='outside')
+                st.plotly_chart(col_fig, use_container_width=True)
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
