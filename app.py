@@ -16,7 +16,7 @@ st.title("📡 Internet Usage Forecasting App")
 st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA dataset.")
 
 # ✅ Upload Excel file
-uploaded_file = st.file_uploader("📤 Upload Excel file", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("📄 Upload Excel file", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
@@ -55,9 +55,12 @@ if uploaded_file is not None:
 
             forecast_df = pd.DataFrame({
                 "Year": future_years,
-                "Linear Forecast": linear_preds.round(2),
-                "Polynomial Forecast": poly_preds.round(2)
+                "Linear Forecast": linear_preds,
+                "Polynomial Forecast": poly_preds
             })
+
+            # ✅ Clip negative values
+            forecast_df = forecast_df.clip(lower=0)
 
             # ✅ Prophet Model
             prophet_df = df.rename(columns={"Year": "ds", "Penetration": "y"})
@@ -68,22 +71,29 @@ if uploaded_file is not None:
             forecast = model.predict(future)
             prophet_forecast = forecast[['ds', 'yhat']].tail(5)
             prophet_forecast['Year'] = prophet_forecast['ds'].dt.year.astype(int)
-            prophet_forecast['Prophet Forecast'] = prophet_forecast['yhat'].round(2)
+            prophet_forecast['Prophet Forecast'] = prophet_forecast['yhat']
+            prophet_forecast = prophet_forecast.clip(lower=0)
 
             # ✅ Merge for column chart
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
 
             # ✅ Add past years comparison
-            df['Linear Forecast'] = linear_model.predict(df[['Year']]).round(2)
-            df['Polynomial Forecast'] = poly_model.predict(poly.transform(df[['Year']])).round(2)
+            df['Linear Forecast'] = linear_model.predict(df[['Year']])
+            df['Polynomial Forecast'] = poly_model.predict(poly.transform(df[['Year']]))
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
             df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
             df = df.rename(columns={'yhat': 'Prophet Forecast'})
-            df['Prophet Forecast'] = df['Prophet Forecast'].round(2)
+
+            # ✅ Clip all negative values to 0
+            df[['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']] = df[['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']].clip(lower=0)
 
             combined_df = pd.concat([df[['Year', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']], export_df])
+            combined_df = combined_df[combined_df['Year'] >= df['Year'].min()]  # Exclude years earlier than dataset
             combined_df = combined_df.sort_values('Year')
+
+            # Round to 2 decimal places
+            combined_df = combined_df.round(2)
 
             # ✅ Display Full Forecast Table
             st.subheader("📊 Full Forecast (Including Past & Future Years)")
@@ -110,7 +120,7 @@ if uploaded_file is not None:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 combined_df.to_excel(writer, index=False, sheet_name='Forecast')
-            st.download_button("📥 Download Forecast Report (Excel)",
+            st.download_button("📅 Download Forecast Report (Excel)",
                                data=buffer,
                                file_name="forecast_report_full.xlsx",
                                mime="application/vnd.ms-excel")
@@ -118,4 +128,4 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
 else:
-    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")   
+    st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")
