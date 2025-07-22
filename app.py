@@ -20,7 +20,7 @@ st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA d
 uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel file", type=["xlsx", "csv"])
 
 show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=True)
-select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
+select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted", "Scenario: Slow Growth", "Scenario: Rapid Growth"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
 year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
 
 chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
@@ -30,6 +30,9 @@ smoothing = st.sidebar.checkbox("Apply Moving Average Smoothing", value=False)
 color_toggle = st.sidebar.checkbox("Color Code Accuracy Table", value=True)
 yoy_toggle = st.sidebar.checkbox("Show YoY % Change in Forecast Table", value=True)
 include_historical_toggle = st.sidebar.checkbox("Include Historical Data in Charts", value=False)
+
+slow_growth_factor = st.sidebar.slider("Slow Growth Multiplier", 0.7, 1.0, 0.9, 0.01)
+rapid_growth_factor = st.sidebar.slider("Rapid Growth Multiplier", 1.0, 1.5, 1.1, 0.01)
 
 if uploaded_file is not None:
     try:
@@ -72,6 +75,9 @@ if uploaded_file is not None:
             prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
             prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
+            prophet_forecast['Scenario: Slow Growth'] = np.clip(prophet_forecast['yhat'] * slow_growth_factor, 0, None).round(2)
+            prophet_forecast['Scenario: Rapid Growth'] = np.clip(prophet_forecast['yhat'] * rapid_growth_factor, 0, None).round(2)
+
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
             prophet_hist['Prophet Fitted'] = np.clip(prophet_hist['yhat'], 0, None).round(2)
@@ -88,12 +94,12 @@ if uploaded_file is not None:
                 "Polynomial Forecast": poly_preds.round(2)
             })
 
-            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound']], on='Year')
+            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound', 'Scenario: Slow Growth', 'Scenario: Rapid Growth']], on='Year')
 
             combined_df = export_df.copy()
 
             if yoy_toggle:
-                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']:
+                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast', 'Scenario: Slow Growth', 'Scenario: Rapid Growth']:
                     if model in combined_df.columns:
                         combined_df[f"{model} YoY%"] = combined_df[model].pct_change().fillna(0).round(4) * 100
 
@@ -157,12 +163,18 @@ if uploaded_file is not None:
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 combined_df.to_excel(writer, index=False, sheet_name='Forecast')
                 metrics_df.to_excel(writer, index=False, sheet_name='Accuracy')
+                combined_df[['Year', 'Scenario: Slow Growth']].to_excel(writer, index=False, sheet_name='Scenario_Slow')
+                combined_df[['Year', 'Scenario: Rapid Growth']].to_excel(writer, index=False, sheet_name='Scenario_Rapid')
+
+                chart_fig = px.line(combined_df, x="Year", y=["Scenario: Slow Growth", "Scenario: Rapid Growth", "Prophet Forecast"],
+                                    title="Scenario Forecasts with Historical Data")
+                chart_fig.write_image("chart.png")
+                worksheet = writer.book.add_worksheet("Charts")
+                worksheet.insert_image('B2', "chart.png")
                 workbook = writer.book
                 if color_toggle:
-                    worksheet = writer.sheets['Accuracy']
-                    format_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-                    format_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-                    worksheet.conditional_format('B2:D100', {'type': '3_color_scale'})
+                    worksheet_acc = writer.sheets['Accuracy']
+                    worksheet_acc.conditional_format('B2:D100', {'type': '3_color_scale'})
             st.download_button("\U0001F4C5 Download Forecast Report (Excel)",
                                data=buffer.getvalue(),
                                file_name="forecast_report_full.xlsx",
