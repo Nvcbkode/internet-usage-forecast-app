@@ -17,19 +17,18 @@ st.set_page_config(page_title="Internet Forecast App", layout="wide")
 st.title("\U0001F4E1 Internet Usage Forecasting App")
 st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA dataset.")
 
-# ✅ Upload Excel file
 uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel file", type=["xlsx", "csv"])
 
-# ✅ Optional filters
 show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=True)
-select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
+select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
 year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
 
-# Interactive chart filters
 chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
 show_data_labels = st.sidebar.checkbox("Show Data Labels on Charts", value=True)
 show_decomposition = st.sidebar.checkbox("Show Time Series Decomposition", value=False)
 smoothing = st.sidebar.checkbox("Apply Moving Average Smoothing", value=False)
+color_toggle = st.sidebar.checkbox("Color Code Accuracy Table", value=True)
+yoy_toggle = st.sidebar.checkbox("Show YoY % Change in Forecast Table", value=True)
 
 if uploaded_file is not None:
     try:
@@ -65,11 +64,18 @@ if uploaded_file is not None:
             model.fit(prophet_df)
             future = model.make_future_dataframe(periods=2030 - df['Year'].max(), freq='Y')
             forecast = model.predict(future)
-            prophet_forecast = forecast[['ds', 'yhat']].tail(2030 - df['Year'].max())
+
+            prophet_forecast = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(2030 - df['Year'].max())
             prophet_forecast['Year'] = prophet_forecast['ds'].dt.year.astype(int)
             prophet_forecast['Prophet Forecast'] = np.clip(prophet_forecast['yhat'], 0, None).round(2)
+            prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
+            prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
-            df['Year'] = df['Year'].astype(int)
+            prophet_hist = forecast[['ds', 'yhat']].head(len(df))
+            prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
+            prophet_hist['Prophet Fitted'] = np.clip(prophet_hist['yhat'], 0, None).round(2)
+            df = df.merge(prophet_hist[['Year', 'Prophet Fitted']], on='Year')
+
             future_years = list(range(df['Year'].max() + 1, 2031))
             future_df = pd.DataFrame(future_years, columns=['Year'])
             linear_preds = np.clip(linear_model.predict(future_df), 0, None)
@@ -81,41 +87,49 @@ if uploaded_file is not None:
                 "Polynomial Forecast": poly_preds.round(2)
             })
 
-            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
+            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound']], on='Year')
 
-            # Use actual values for known years instead of model predictions
             df['Linear Forecast'] = df['Penetration']
             df['Polynomial Forecast'] = df['Penetration']
-            prophet_hist = forecast[['ds', 'yhat']].head(len(df))
-            prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
-            df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
-            df = df.rename(columns={'yhat': 'Prophet Forecast'})
-            df['Prophet Forecast'] = np.clip(df['Prophet Forecast'], 0, None).round(2)
 
-            combined_df = pd.concat([df[['Year', 'Penetration', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']], export_df])
+            combined_df = pd.concat([df[['Year', 'Penetration', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Fitted']], export_df], sort=False)
             combined_df = combined_df.sort_values('Year')
             combined_df = combined_df[(combined_df['Year'] >= year_range[0]) & (combined_df['Year'] <= year_range[1])]
+
+            if yoy_toggle:
+                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast', 'Prophet Fitted']:
+                    if model in combined_df.columns:
+                        combined_df[f"{model} YoY%"] = combined_df[model].pct_change().fillna(0).round(4) * 100
 
             st.subheader("\U0001F4C8 Full Forecast (Filtered by Selected Years)")
             st.dataframe(combined_df)
 
             if show_accuracy:
                 st.subheader("\U0001F4CA Predictive Accuracy Metrics (on historical data)")
-                metrics = {
-                    "Model": [], "R2 Score": [], "MAE": [], "RMSE": []
-                }
+                metrics = {"Model": [], "R2 Score": [], "MAE": [], "RMSE": []}
                 for model_name in select_models:
                     if model_name in df.columns:
                         metrics["Model"].append(model_name)
                         metrics["R2 Score"].append(round(r2_score(df['Penetration'], df[model_name]), 3))
                         metrics["MAE"].append(round(mean_absolute_error(df['Penetration'], df[model_name]), 3))
                         metrics["RMSE"].append(round(np.sqrt(mean_squared_error(df['Penetration'], df[model_name])), 3))
-                st.dataframe(pd.DataFrame(metrics))
+                metrics_df = pd.DataFrame(metrics)
+                if color_toggle:
+                    styled_metrics = metrics_df.style.background_gradient(axis=0, cmap='coolwarm')
+                    st.dataframe(styled_metrics)
+                else:
+                    st.dataframe(metrics_df)
+                csv = metrics_df.to_csv(index=False).encode('utf-8')
+                st.download_button("\U0001F4BE Download Accuracy Metrics (CSV)", data=csv, file_name="accuracy_metrics.csv", mime='text/csv')
 
             if chart_type in ["Line Chart", "Both"]:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
                 line_fig = px.line(combined_df, x="Year", y=select_models,
-                                   markers=True, title="Forecast Line Chart (Filtered Models)")
+                                   markers=True, title="Forecast Line Chart (Filtered Models)",
+                                   hover_data={col: ':.2f' for col in select_models})
+                if 'Lower Bound' in combined_df.columns and 'Upper Bound' in combined_df.columns:
+                    line_fig.add_traces(px.line(combined_df, x="Year", y="Lower Bound").data)
+                    line_fig.add_traces(px.line(combined_df, x="Year", y="Upper Bound").data)
                 if show_data_labels:
                     for trace in line_fig.data:
                         trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
@@ -123,12 +137,12 @@ if uploaded_file is not None:
 
             if chart_type in ["Column Chart", "Both"]:
                 st.subheader("\U0001F4CA Forecast Comparison Column Chart")
-                melted_df = combined_df.melt(id_vars='Year',
-                                             value_vars=select_models,
-                                             var_name="Model", value_name="Forecast")
+                melted_df = combined_df.melt(id_vars='Year', value_vars=select_models, var_name="Model", value_name="Forecast")
                 melted_df = melted_df.sort_values(by=['Year', 'Model'])
                 col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
                                  text=melted_df["Forecast"].round(2),
+                                 hover_name="Model",
+                                 hover_data={"Forecast":":.2f", "Year":True},
                                  title="Forecast Comparison Column Chart (Filtered Models)")
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
@@ -146,8 +160,15 @@ if uploaded_file is not None:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 combined_df.to_excel(writer, index=False, sheet_name='Forecast')
+                metrics_df.to_excel(writer, index=False, sheet_name='Accuracy')
+                workbook = writer.book
+                if color_toggle:
+                    worksheet = writer.sheets['Accuracy']
+                    format_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+                    format_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+                    worksheet.conditional_format('B2:D100', {'type': '3_color_scale'})
             st.download_button("\U0001F4C5 Download Forecast Report (Excel)",
-                               data=buffer,
+                               data=buffer.getvalue(),
                                file_name="forecast_report_full.xlsx",
                                mime="application/vnd.ms-excel")
 
