@@ -77,7 +77,6 @@ if uploaded_file is not None:
             prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
             prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
-            # Apply multipliers dynamically
             prophet_forecast['Scenario: Slow Growth'] = (prophet_forecast['Prophet Forecast'] * slow_growth_factor).round(2)
             prophet_forecast['Scenario: Rapid Growth'] = (prophet_forecast['Prophet Forecast'] * rapid_growth_factor).round(2)
 
@@ -127,7 +126,9 @@ if uploaded_file is not None:
             if include_historical_toggle:
                 chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
             else:
-                chart_data = combined_df[combined_df['Year'].between(*year_range)]
+                chart_data = combined_df
+
+            chart_data = chart_data[chart_data['Year'].between(*year_range)]
 
             if decade_toggle != "All":
                 decade_map = {
