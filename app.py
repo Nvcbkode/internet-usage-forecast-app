@@ -20,8 +20,10 @@ st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA d
 uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel file", type=["xlsx", "csv"])
 
 show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=True)
-select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
+select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted", "Scenario: Slow Growth", "Scenario: Rapid Growth"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
 year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
+
+decade_toggle = st.sidebar.selectbox("Decade Filter (Interactive Toggle)", options=["All", "1990s", "2000s", "2010s", "2020s", "2030s"])
 
 chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
 show_data_labels = st.sidebar.checkbox("Show Data Labels on Charts", value=True)
@@ -30,6 +32,9 @@ smoothing = st.sidebar.checkbox("Apply Moving Average Smoothing", value=False)
 color_toggle = st.sidebar.checkbox("Color Code Accuracy Table", value=True)
 yoy_toggle = st.sidebar.checkbox("Show YoY % Change in Forecast Table", value=True)
 include_historical_toggle = st.sidebar.checkbox("Include Historical Data in Charts", value=False)
+
+slow_growth_factor = st.sidebar.slider("Slow Growth Multiplier", 0.7, 1.0, 0.9, 0.01)
+rapid_growth_factor = st.sidebar.slider("Rapid Growth Multiplier", 1.0, 1.5, 1.1, 0.01)
 
 if uploaded_file is not None:
     try:
@@ -72,10 +77,16 @@ if uploaded_file is not None:
             prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
             prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
+            prophet_forecast['Scenario: Slow Growth'] = (prophet_forecast['Prophet Forecast'] * slow_growth_factor).round(2)
+            prophet_forecast['Scenario: Rapid Growth'] = (prophet_forecast['Prophet Forecast'] * rapid_growth_factor).round(2)
+
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
             prophet_hist['Prophet Fitted'] = np.clip(prophet_hist['yhat'], 0, None).round(2)
             df = df.merge(prophet_hist[['Year', 'Prophet Fitted']], on='Year')
+
+            df['Linear Forecast'] = np.clip(linear_model.predict(X), 0, None).round(2)
+            df['Polynomial Forecast'] = np.clip(poly_model.predict(X_poly), 0, None).round(2)
 
             future_years = list(range(df['Year'].max() + 1, 2031))
             future_df = pd.DataFrame(future_years, columns=['Year'])
@@ -88,12 +99,11 @@ if uploaded_file is not None:
                 "Polynomial Forecast": poly_preds.round(2)
             })
 
-            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound']], on='Year')
-
+            export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound', 'Scenario: Slow Growth', 'Scenario: Rapid Growth']], on='Year')
             combined_df = export_df.copy()
 
             if yoy_toggle:
-                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']:
+                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast', 'Scenario: Slow Growth', 'Scenario: Rapid Growth']:
                     if model in combined_df.columns:
                         combined_df[f"{model} YoY%"] = combined_df[model].pct_change().fillna(0).round(4) * 100
 
@@ -115,13 +125,24 @@ if uploaded_file is not None:
                     st.dataframe(styled_metrics)
                 else:
                     st.dataframe(metrics_df)
-                csv = metrics_df.to_csv(index=False).encode('utf-8')
-                st.download_button("\U0001F4BE Download Accuracy Metrics (CSV)", data=csv, file_name="accuracy_metrics.csv", mime='text/csv')
 
             if include_historical_toggle:
                 chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
             else:
-                chart_data = combined_df[combined_df['Year'].between(*year_range)]
+                chart_data = combined_df
+
+            chart_data = chart_data[chart_data['Year'].between(*year_range)]
+
+            if decade_toggle != "All":
+                decade_map = {
+                    "1990s": range(1990, 2000),
+                    "2000s": range(2000, 2010),
+                    "2010s": range(2010, 2020),
+                    "2020s": range(2020, 2030),
+                    "2030s": range(2030, 2040)
+                }
+                if decade_toggle in decade_map:
+                    chart_data = chart_data[chart_data['Year'].isin(decade_map[decade_toggle])]
 
             if chart_type in ["Line Chart", "Both"]:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
@@ -152,21 +173,6 @@ if uploaded_file is not None:
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
                 st.plotly_chart(col_fig, use_container_width=True)
-
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                combined_df.to_excel(writer, index=False, sheet_name='Forecast')
-                metrics_df.to_excel(writer, index=False, sheet_name='Accuracy')
-                workbook = writer.book
-                if color_toggle:
-                    worksheet = writer.sheets['Accuracy']
-                    format_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-                    format_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-                    worksheet.conditional_format('B2:D100', {'type': '3_color_scale'})
-            st.download_button("\U0001F4C5 Download Forecast Report (Excel)",
-                               data=buffer.getvalue(),
-                               file_name="forecast_report_full.xlsx",
-                               mime="application/vnd.ms-excel")
 
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
