@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from prophet import Prophet
+from statsmodels.tsa.seasonal import seasonal_decompose
 import io
 import datetime
 import numpy as np
@@ -27,6 +28,8 @@ year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030
 # Interactive chart filters
 chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
 show_data_labels = st.sidebar.checkbox("Show Data Labels on Charts", value=True)
+show_decomposition = st.sidebar.checkbox("Show Time Series Decomposition", value=False)
+smoothing = st.sidebar.checkbox("Apply Moving Average Smoothing", value=False)
 
 if uploaded_file is not None:
     try:
@@ -47,6 +50,9 @@ if uploaded_file is not None:
             df['Year'] = df['Year'].astype(int)
             X = df[['Year']]
             y = df['Penetration']
+
+            if smoothing:
+                df['Penetration'] = df['Penetration'].rolling(window=3, center=True).mean().fillna(method='bfill').fillna(method='ffill')
 
             linear_model = LinearRegression().fit(X, y)
             poly = PolynomialFeatures(degree=2)
@@ -126,6 +132,15 @@ if uploaded_file is not None:
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
                 st.plotly_chart(col_fig, use_container_width=True)
+
+            if show_decomposition:
+                st.subheader("\U0001F4CB Time Series Decomposition")
+                ts_df = df.set_index("Year")["Penetration"]
+                ts_df.index = pd.to_datetime(ts_df.index, format='%Y')
+                result = seasonal_decompose(ts_df, model='additive', period=1)
+                st.line_chart(result.trend.dropna(), use_container_width=True)
+                st.line_chart(result.seasonal.dropna(), use_container_width=True)
+                st.line_chart(result.resid.dropna(), use_container_width=True)
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
