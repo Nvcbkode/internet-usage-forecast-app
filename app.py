@@ -23,6 +23,8 @@ show_accuracy = st.sidebar.checkbox("Show Predictive Accuracy Metrics", value=Tr
 select_models = st.sidebar.multiselect("Select Models to Display", ["Linear Forecast", "Polynomial Forecast", "Prophet Forecast", "Prophet Fitted", "Scenario: Slow Growth", "Scenario: Rapid Growth"], default=["Linear Forecast", "Polynomial Forecast", "Prophet Forecast"])
 year_range = st.sidebar.slider("Select Year Range for Visualization", 1990, 2030, (2000, 2030))
 
+decade_toggle = st.sidebar.selectbox("Decade Filter (Interactive Toggle)", options=["All", "1990s", "2000s", "2010s", "2020s", "2030s"])
+
 chart_type = st.sidebar.radio("Chart Type", ["Line Chart", "Column Chart", "Both"])
 show_data_labels = st.sidebar.checkbox("Show Data Labels on Charts", value=True)
 show_decomposition = st.sidebar.checkbox("Show Time Series Decomposition", value=False)
@@ -95,7 +97,6 @@ if uploaded_file is not None:
             })
 
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound', 'Scenario: Slow Growth', 'Scenario: Rapid Growth']], on='Year')
-
             combined_df = export_df.copy()
 
             if yoy_toggle:
@@ -121,13 +122,23 @@ if uploaded_file is not None:
                     st.dataframe(styled_metrics)
                 else:
                     st.dataframe(metrics_df)
-                csv = metrics_df.to_csv(index=False).encode('utf-8')
-                st.download_button("\U0001F4BE Download Accuracy Metrics (CSV)", data=csv, file_name="accuracy_metrics.csv", mime='text/csv')
 
             if include_historical_toggle:
                 chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
             else:
                 chart_data = combined_df[combined_df['Year'].between(*year_range)]
+
+            # Interactive decade filtering
+            if decade_toggle != "All":
+                decade_map = {
+                    "1990s": range(1990, 2000),
+                    "2000s": range(2000, 2010),
+                    "2010s": range(2010, 2020),
+                    "2020s": range(2020, 2030),
+                    "2030s": range(2030, 2040)
+                }
+                if decade_toggle in decade_map:
+                    chart_data = chart_data[chart_data['Year'].isin(decade_map[decade_toggle])]
 
             if chart_type in ["Line Chart", "Both"]:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
@@ -158,27 +169,6 @@ if uploaded_file is not None:
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
                 st.plotly_chart(col_fig, use_container_width=True)
-
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                combined_df.to_excel(writer, index=False, sheet_name='Forecast')
-                metrics_df.to_excel(writer, index=False, sheet_name='Accuracy')
-                combined_df[['Year', 'Scenario: Slow Growth']].to_excel(writer, index=False, sheet_name='Scenario_Slow')
-                combined_df[['Year', 'Scenario: Rapid Growth']].to_excel(writer, index=False, sheet_name='Scenario_Rapid')
-
-                chart_fig = px.line(combined_df, x="Year", y=["Scenario: Slow Growth", "Scenario: Rapid Growth", "Prophet Forecast"],
-                                    title="Scenario Forecasts with Historical Data")
-                chart_fig.write_image("chart.png")
-                worksheet = writer.book.add_worksheet("Charts")
-                worksheet.insert_image('B2', "chart.png")
-                workbook = writer.book
-                if color_toggle:
-                    worksheet_acc = writer.sheets['Accuracy']
-                    worksheet_acc.conditional_format('B2:D100', {'type': '3_color_scale'})
-            st.download_button("\U0001F4C5 Download Forecast Report (Excel)",
-                               data=buffer.getvalue(),
-                               file_name="forecast_report_full.xlsx",
-                               mime="application/vnd.ms-excel")
 
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
