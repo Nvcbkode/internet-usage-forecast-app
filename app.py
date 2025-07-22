@@ -77,8 +77,9 @@ if uploaded_file is not None:
             prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
             prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
-            prophet_forecast['Scenario: Slow Growth'] = np.clip(prophet_forecast['yhat'] * slow_growth_factor, 0, None).round(2)
-            prophet_forecast['Scenario: Rapid Growth'] = np.clip(prophet_forecast['yhat'] * rapid_growth_factor, 0, None).round(2)
+            # Apply multipliers dynamically
+            prophet_forecast['Scenario: Slow Growth'] = (prophet_forecast['Prophet Forecast'] * slow_growth_factor).round(2)
+            prophet_forecast['Scenario: Rapid Growth'] = (prophet_forecast['Prophet Forecast'] * rapid_growth_factor).round(2)
 
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
@@ -128,7 +129,6 @@ if uploaded_file is not None:
             else:
                 chart_data = combined_df[combined_df['Year'].between(*year_range)]
 
-            # Interactive decade filtering
             if decade_toggle != "All":
                 decade_map = {
                     "1990s": range(1990, 2000),
