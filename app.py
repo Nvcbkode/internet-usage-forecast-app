@@ -29,6 +29,7 @@ show_decomposition = st.sidebar.checkbox("Show Time Series Decomposition", value
 smoothing = st.sidebar.checkbox("Apply Moving Average Smoothing", value=False)
 color_toggle = st.sidebar.checkbox("Color Code Accuracy Table", value=True)
 yoy_toggle = st.sidebar.checkbox("Show YoY % Change in Forecast Table", value=True)
+include_historical_toggle = st.sidebar.checkbox("Include Historical Data in Charts", value=False)
 
 if uploaded_file is not None:
     try:
@@ -89,19 +90,14 @@ if uploaded_file is not None:
 
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast', 'Lower Bound', 'Upper Bound']], on='Year')
 
-            df['Linear Forecast'] = df['Penetration']
-            df['Polynomial Forecast'] = df['Penetration']
-
-            combined_df = pd.concat([df[['Year', 'Penetration', 'Linear Forecast', 'Polynomial Forecast', 'Prophet Fitted']], export_df], sort=False)
-            combined_df = combined_df.sort_values('Year')
-            combined_df = combined_df[(combined_df['Year'] >= year_range[0]) & (combined_df['Year'] <= year_range[1])]
+            combined_df = export_df.copy()
 
             if yoy_toggle:
-                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast', 'Prophet Fitted']:
+                for model in ['Linear Forecast', 'Polynomial Forecast', 'Prophet Forecast']:
                     if model in combined_df.columns:
                         combined_df[f"{model} YoY%"] = combined_df[model].pct_change().fillna(0).round(4) * 100
 
-            st.subheader("\U0001F4C8 Full Forecast (Filtered by Selected Years)")
+            st.subheader("\U0001F4C8 Forecast for Future Years Only")
             st.dataframe(combined_df)
 
             if show_accuracy:
@@ -122,14 +118,19 @@ if uploaded_file is not None:
                 csv = metrics_df.to_csv(index=False).encode('utf-8')
                 st.download_button("\U0001F4BE Download Accuracy Metrics (CSV)", data=csv, file_name="accuracy_metrics.csv", mime='text/csv')
 
+            if include_historical_toggle:
+                chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
+            else:
+                chart_data = combined_df.copy()
+
             if chart_type in ["Line Chart", "Both"]:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
-                line_fig = px.line(combined_df, x="Year", y=select_models,
+                line_fig = px.line(chart_data, x="Year", y=select_models,
                                    markers=True, title="Forecast Line Chart (Filtered Models)",
                                    hover_data={col: ':.2f' for col in select_models})
-                if 'Lower Bound' in combined_df.columns and 'Upper Bound' in combined_df.columns:
-                    line_fig.add_traces(px.line(combined_df, x="Year", y="Lower Bound").data)
-                    line_fig.add_traces(px.line(combined_df, x="Year", y="Upper Bound").data)
+                if 'Lower Bound' in chart_data.columns and 'Upper Bound' in chart_data.columns:
+                    line_fig.add_traces(px.line(chart_data, x="Year", y="Lower Bound").data)
+                    line_fig.add_traces(px.line(chart_data, x="Year", y="Upper Bound").data)
                 if show_data_labels:
                     for trace in line_fig.data:
                         trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
@@ -137,7 +138,7 @@ if uploaded_file is not None:
 
             if chart_type in ["Column Chart", "Both"]:
                 st.subheader("\U0001F4CA Forecast Comparison Column Chart")
-                melted_df = combined_df.melt(id_vars='Year', value_vars=select_models, var_name="Model", value_name="Forecast")
+                melted_df = chart_data.melt(id_vars='Year', value_vars=select_models, var_name="Model", value_name="Forecast")
                 melted_df = melted_df.sort_values(by=['Year', 'Model'])
                 col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
                                  text=melted_df["Forecast"].round(2),
@@ -147,15 +148,6 @@ if uploaded_file is not None:
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
                 st.plotly_chart(col_fig, use_container_width=True)
-
-            if show_decomposition:
-                st.subheader("\U0001F4CB Time Series Decomposition")
-                ts_df = df.set_index("Year")["Penetration"]
-                ts_df.index = pd.to_datetime(ts_df.index, format='%Y')
-                result = seasonal_decompose(ts_df, model='additive', period=1)
-                st.line_chart(result.trend.dropna(), use_container_width=True)
-                st.line_chart(result.seasonal.dropna(), use_container_width=True)
-                st.line_chart(result.resid.dropna(), use_container_width=True)
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
