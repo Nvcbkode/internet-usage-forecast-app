@@ -83,8 +83,9 @@ if uploaded_file is not None:
 
             export_df = forecast_df.merge(prophet_forecast[['Year', 'Prophet Forecast']], on='Year')
 
-            df['Linear Forecast'] = np.clip(linear_model.predict(df[['Year']]), 0, None).round(2)
-            df['Polynomial Forecast'] = np.clip(poly_model.predict(poly.transform(df[['Year']])), 0, None).round(2)
+            # Use actual values for known years instead of model predictions
+            df['Linear Forecast'] = df['Penetration']
+            df['Polynomial Forecast'] = df['Penetration']
             prophet_hist = forecast[['ds', 'yhat']].head(len(df))
             prophet_hist['Year'] = prophet_hist['ds'].dt.year.astype(int)
             df = df.merge(prophet_hist[['Year', 'yhat']], on='Year')
