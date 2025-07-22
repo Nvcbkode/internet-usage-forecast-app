@@ -36,6 +36,9 @@ include_historical_toggle = st.sidebar.checkbox("Include Historical Data in Char
 slow_growth_factor = st.sidebar.slider("Slow Growth Multiplier", 0.7, 1.0, 0.9, 0.01)
 rapid_growth_factor = st.sidebar.slider("Rapid Growth Multiplier", 1.0, 1.5, 1.1, 0.01)
 
+# Button to force update scenarios
+force_update = st.sidebar.button("Update Forecast Scenarios")
+
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -77,6 +80,7 @@ if uploaded_file is not None:
             prophet_forecast['Lower Bound'] = np.clip(prophet_forecast['yhat_lower'], 0, None).round(2)
             prophet_forecast['Upper Bound'] = np.clip(prophet_forecast['yhat_upper'], 0, None).round(2)
 
+            # Always recalculate scenario columns
             prophet_forecast['Scenario: Slow Growth'] = (prophet_forecast['Prophet Forecast'] * slow_growth_factor).round(2)
             prophet_forecast['Scenario: Rapid Growth'] = (prophet_forecast['Prophet Forecast'] * rapid_growth_factor).round(2)
 
