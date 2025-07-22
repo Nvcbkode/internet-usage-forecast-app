@@ -129,8 +129,12 @@ if uploaded_file is not None:
                                    markers=True, title="Forecast Line Chart (Filtered Models)",
                                    hover_data={col: ':.2f' for col in select_models})
                 if 'Lower Bound' in chart_data.columns and 'Upper Bound' in chart_data.columns:
-                    line_fig.add_traces(px.line(chart_data, x="Year", y="Lower Bound").data)
-                    line_fig.add_traces(px.line(chart_data, x="Year", y="Upper Bound").data)
+                    line_fig.add_scatter(x=chart_data["Year"], y=chart_data["Lower Bound"],
+                                         mode='lines', name='Lower Bound',
+                                         line=dict(color='rgba(255,0,0,0.4)', dash='dot'))
+                    line_fig.add_scatter(x=chart_data["Year"], y=chart_data["Upper Bound"],
+                                         mode='lines', name='Upper Bound',
+                                         line=dict(color='rgba(0,0,255,0.4)', dash='dot'))
                 if show_data_labels:
                     for trace in line_fig.data:
                         trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
