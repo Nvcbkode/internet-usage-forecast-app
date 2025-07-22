@@ -36,9 +36,10 @@ include_historical_toggle = st.sidebar.checkbox("Include Historical Data in Char
 slow_growth_factor = st.sidebar.slider("Slow Growth Multiplier", 0.7, 1.0, 0.9, 0.01)
 rapid_growth_factor = st.sidebar.slider("Rapid Growth Multiplier", 1.0, 1.5, 1.1, 0.01)
 
-# Keep chart_data stable across toggles
-cached_chart_data = st.session_state.get("cached_chart_data")
-cached_combined_df = st.session_state.get("cached_combined_df")
+if "cached_chart_data" not in st.session_state:
+    st.session_state.cached_chart_data = None
+if "cached_combined_df" not in st.session_state:
+    st.session_state.cached_combined_df = None
 
 if uploaded_file is not None:
     try:
@@ -133,16 +134,15 @@ if uploaded_file is not None:
                 else:
                     st.info("No accuracy metrics available for selected models.")
 
-            if include_historical_toggle:
-                chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
-            else:
-                chart_data = combined_df[["Year"] + [col for col in combined_df.columns if col in select_models or col in ['Lower Bound', 'Upper Bound']]]
+            if st.session_state.cached_chart_data is None or st.session_state.cached_combined_df is None:
+                if include_historical_toggle:
+                    chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
+                else:
+                    chart_data = combined_df[["Year"] + [col for col in combined_df.columns if col in select_models or col in ['Lower Bound', 'Upper Bound']]]
+                st.session_state.cached_chart_data = chart_data.copy()
+                st.session_state.cached_combined_df = combined_df.copy()
 
-            # Cache full dataset without filtering to preserve state
-            st.session_state.cached_chart_data = chart_data.copy()
-            st.session_state.cached_combined_df = combined_df.copy()
-
-            chart_data = st.session_state.cached_chart_data
+            chart_data = st.session_state.cached_chart_data.copy()
             chart_data = chart_data[chart_data['Year'].between(*year_range)]
 
             if decade_toggle != "All":
