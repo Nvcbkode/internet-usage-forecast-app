@@ -85,6 +85,9 @@ if uploaded_file is not None:
             prophet_hist['Prophet Fitted'] = np.clip(prophet_hist['yhat'], 0, None).round(2)
             df = df.merge(prophet_hist[['Year', 'Prophet Fitted']], on='Year')
 
+            df['Linear Forecast'] = np.clip(linear_model.predict(X), 0, None).round(2)
+            df['Polynomial Forecast'] = np.clip(poly_model.predict(X_poly), 0, None).round(2)
+
             future_years = list(range(df['Year'].max() + 1, 2031))
             future_df = pd.DataFrame(future_years, columns=['Year'])
             linear_preds = np.clip(linear_model.predict(future_df), 0, None)
