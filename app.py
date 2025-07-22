@@ -14,7 +14,7 @@ import numpy as np
 
 st.set_page_config(page_title="Internet Forecast App", layout="wide")
 
-st.title("\U0001F4E1 Internet Usage Forecasting App")
+st.title("\U0001F4E1 Internet Penetration in Nigeria Forecast")
 st.markdown("Predict future internet usage in Nigeria using the ITNETUSERP2NGA dataset.")
 
 uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel file", type=["xlsx", "csv"])
