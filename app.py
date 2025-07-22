@@ -121,7 +121,7 @@ if uploaded_file is not None:
             if include_historical_toggle:
                 chart_data = pd.concat([df[['Year', 'Penetration'] + [col for col in df.columns if col in select_models]], combined_df], ignore_index=True)
             else:
-                chart_data = combined_df.copy()
+                chart_data = combined_df[combined_df['Year'].between(*year_range)]
 
             if chart_type in ["Line Chart", "Both"]:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
