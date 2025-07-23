@@ -1,9 +1,8 @@
 streamlit
+psycopg2-binary
+bcrypt
 pandas
 matplotlib
-plotly
 scikit-learn
+plotly
 prophet
-statsmodels
-openpyxl
-xlsxwriter
