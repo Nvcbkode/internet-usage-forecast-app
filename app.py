@@ -156,11 +156,19 @@ if uploaded_file is not None:
                 if decade_toggle in decade_map:
                     chart_data = chart_data[chart_data['Year'].isin(decade_map[decade_toggle])]
 
-            if chart_type in ["Line Chart", "Both"]:
+            # Filter select_models to only include columns that actually exist in chart_data
+            available_models = [model for model in select_models if model in chart_data.columns]
+
+            if chart_type in ["Line Chart", "Both"] and available_models:
                 st.subheader("\U0001F4C8 Forecast Line Chart")
-                line_fig = px.line(chart_data, x="Year", y=select_models,
+                
+                # Create hover_data dict only for columns that exist in chart_data
+                hover_data_dict = {col: ':.2f' for col in available_models if col in chart_data.columns}
+                
+                line_fig = px.line(chart_data, x="Year", y=available_models,
                                    markers=True, title="Forecast Line Chart (Filtered Models)",
-                                   hover_data={col: ':.2f' for col in select_models})
+                                   hover_data=hover_data_dict)
+                
                 if 'Lower Bound' in chart_data.columns and 'Upper Bound' in chart_data.columns:
                     line_fig.add_scatter(x=chart_data["Year"], y=chart_data["Lower Bound"],
                                          mode='lines', name='Lower Bound',
@@ -168,14 +176,19 @@ if uploaded_file is not None:
                     line_fig.add_scatter(x=chart_data["Year"], y=chart_data["Upper Bound"],
                                          mode='lines', name='Upper Bound',
                                          line=dict(color='rgba(0,0,255,0.4)', dash='dot'))
+                
                 if show_data_labels:
                     for trace in line_fig.data:
-                        trace.update(mode="lines+markers+text", text=[f"{y:.2f}" for y in trace.y], textposition="top center")
+                        if hasattr(trace, 'y') and trace.y is not None:
+                            trace.update(mode="lines+markers+text", 
+                                       text=[f"{y:.2f}" for y in trace.y], 
+                                       textposition="top center")
+                
                 st.plotly_chart(line_fig, use_container_width=True)
 
-            if chart_type in ["Column Chart", "Both"]:
+            if chart_type in ["Column Chart", "Both"] and available_models:
                 st.subheader("\U0001F4CA Forecast Comparison Column Chart")
-                melted_df = chart_data.melt(id_vars='Year', value_vars=select_models, var_name="Model", value_name="Forecast")
+                melted_df = chart_data.melt(id_vars='Year', value_vars=available_models, var_name="Model", value_name="Forecast")
                 melted_df = melted_df.sort_values(by=['Year', 'Model'])
                 col_fig = px.bar(melted_df, x="Year", y="Forecast", color="Model", barmode="group",
                                  text=melted_df["Forecast"].round(2),
@@ -185,8 +198,12 @@ if uploaded_file is not None:
                 if show_data_labels:
                     col_fig.update_traces(textposition='outside')
                 st.plotly_chart(col_fig, use_container_width=True)
+                
+            if not available_models:
+                st.warning("⚠️ No selected models are available in the current data. Please check your model selection.")
 
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
+        st.error("Please check your file format and ensure it contains 'YEAR' and 'VALUE' columns.")
 else:
     st.info("👆 Upload a file with 'YEAR' and 'VALUE' columns to continue.")
